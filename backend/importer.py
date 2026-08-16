@@ -39,6 +39,8 @@ HEADER_MAP = {
     "stile quantity": "stile_qty", "stiles": "stiles",
     "rail quantity leaf 1": "rail_qty_1", "rail size leaf 1": "rail_1",
     "rail quantity leaf 2": "rail_qty_2", "rail size leaf 2": "rail_2",
+    "level & location": "_combo_level_location", "level/location": "_combo_level_location",
+    "level and location": "_combo_level_location", "floor & location": "_combo_level_location",
 }
 
 PREFIX_MAP = [
@@ -52,6 +54,22 @@ PREFIX_MAP = [
 
 def norm_cell(c) -> str:
     return " ".join(str(c).replace("\n", " ").split()).lower() if c is not None else ""
+
+
+FLOOR_TOKEN_RE = re.compile(r"(ground\s*floor|ground\s*fl|level\s*\d+\s*(?:\(m\))?|roof)", re.I)
+
+
+def split_level_location(raw: str):
+    """Split a combined 'Level & Location' style value, e.g. 'LORIMER-LEVEL 01-ELEC CPBD'
+    or 'LORIMER ST-LEVEL 01-STORE', into (project_prefix, floor, location)."""
+    raw = (raw or "").strip()
+    m = FLOOR_TOKEN_RE.search(raw)
+    if not m:
+        return "", "", raw
+    floor = re.sub(r"\s+", " ", m.group(1)).strip().upper()
+    prefix = raw[:m.start()].strip(" -")
+    location = raw[m.end():].strip(" -")
+    return prefix, floor, location
 
 
 def map_header(h: str):
@@ -85,6 +103,7 @@ def parse_workbook(data: bytes, filename: str):
             if field and (field.startswith("extra:") or field not in colmap.values()):
                 colmap[j] = field
         doors = []
+        floors_seen, prefixes_seen = set(), set()
         for row in rows[header_idx + 1:]:
             rec, extras = {}, {}
             for j, field in colmap.items():
@@ -92,6 +111,16 @@ def parse_workbook(data: bytes, filename: str):
                 if v is None or not str(v).strip():
                     continue
                 val = str(v).strip()
+                if field == "_combo_level_location":
+                    prefix, floor, location = split_level_location(val)
+                    if floor:
+                        rec.setdefault("floor", floor)
+                        floors_seen.add(floor)
+                    if location:
+                        rec.setdefault("location", location)
+                    if prefix:
+                        prefixes_seen.add(prefix)
+                    continue
                 if field.startswith("extra:"):
                     extras[field[6:]] = val
                 else:
@@ -102,6 +131,12 @@ def parse_workbook(data: bytes, filename: str):
                 doors.append(rec)
         if doors:
             job_name = title.split(" - ", 1)[1].strip() if " - " in title else title
+            if prefixes_seen:
+                prefix = sorted(prefixes_seen)[0]
+                if len(floors_seen) == 1:
+                    job_name = f"{prefix} — {next(iter(floors_seen))}"
+                elif len(floors_seen) > 1:
+                    job_name = f"{prefix} — Multiple Levels"
             return {"job_name": job_name, "source_title": title, "count": len(doors), "doors": doors}
     raise ValueError("Could not find a header row containing 'DOOR ID' or 'Door#'")
 
@@ -152,6 +187,8 @@ async def create_jobs_from_records(records, user, released=False):
         if not fresh:
             continue
         job_name = fresh[0].get("_job_name") or f"Imported — {floor}"
+        if floor and floor.upper() not in job_name.upper():
+            job_name = f"{job_name} — {floor}"
         job = {"id": str(uuid.uuid4()), "name": job_name, "client": "",
                "released": released, "created_at": now_iso()}
         await db.jobs.insert_one(job)
