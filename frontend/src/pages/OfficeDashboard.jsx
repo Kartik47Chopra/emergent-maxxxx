@@ -1,13 +1,15 @@
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { MagnifyingGlass, Package, Truck, WarningCircle, CheckCircle, RocketLaunch, X } from "@phosphor-icons/react";
+import { MagnifyingGlass, Package, Truck, WarningCircle, CheckCircle, RocketLaunch, Barcode as BarcodeIcon } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { api, apiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { TopNav } from "@/components/TopNav";
+import { AppShell } from "@/components/AppShell";
 import { StatusPill, stageStatus } from "@/components/StatusPill";
 import { DoorFiles } from "@/components/DoorFiles";
+import { LabelModal } from "@/components/LabelModal";
 
 const STAGE_COLS = ["core", "skin", "assembly", "press", "routing", "despatch"];
 
@@ -31,10 +33,12 @@ function StatCard({ icon: Icon, label, value, tone = "text-white", testId, delay
 
 export default function OfficeDashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [floor, setFloor] = useState("");
   const [search, setSearch] = useState("");
   const [photoDoor, setPhotoDoor] = useState(null);
+  const [sticker, setSticker] = useState(null);
 
   const { data: stats } = useQuery({
     queryKey: ["stats"],
@@ -67,13 +71,13 @@ export default function OfficeDashboard() {
   });
 
   return (
-    <div className="min-h-screen bg-obsidian text-white" data-testid="office-dashboard">
-      <TopNav />
+    <AppShell testId="office-dashboard">
       <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-8">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="font-mono text-[10px] tracking-[0.3em] text-ember">OFFICE CONTROL ROOM</p>
             <h1 className="font-display font-black text-4xl sm:text-5xl tracking-tighter mt-1">Production Tracking</h1>
+            <p className="text-zinc-400 text-sm mt-2">Tap any door row to open its full page with specs, barcode and drawings.</p>
           </div>
           <p className="font-mono text-xs text-zinc-500">LIVE FEED · REFRESH 6S</p>
         </div>
@@ -146,7 +150,7 @@ export default function OfficeDashboard() {
             <table className="w-full text-sm" data-testid="tracking-table">
               <thead>
                 <tr className="border-b border-white/10">
-                  {["DOOR ID", "LOCATION", ...STAGE_COLS.map((c) => c.toUpperCase()), "UPLOADS", ""].map((h) => (
+                  {["DOOR ID", "LOCATION", ...STAGE_COLS.map((c) => c.toUpperCase()), "UPLOADS", "STICKER", ""].map((h) => (
                     <th key={h} className="text-left font-mono text-[10px] tracking-[0.2em] text-zinc-500 px-4 py-3 whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -156,8 +160,10 @@ export default function OfficeDashboard() {
                   const st = stageStatus(door);
                   const canDespatch = st.despatch === "awaiting";
                   return (
-                    <tr key={door.id} data-testid={`door-row-${door.door_id}`} className="border-b border-white/5 hover:bg-white/[0.03] transition-colors">
-                      <td className="px-4 py-3 font-mono font-bold text-ember whitespace-nowrap">{door.door_id}</td>
+                    <tr key={door.id} data-testid={`door-row-${door.door_id}`}
+                      onClick={() => navigate(`/office/doors/${encodeURIComponent(door.door_id)}`)}
+                      className="border-b border-white/5 hover:bg-white/[0.04] transition-colors cursor-pointer">
+                      <td className="px-4 py-3 font-mono font-bold text-ember whitespace-nowrap underline-offset-4 hover:underline">{door.door_id}</td>
                       <td className="px-4 py-3 text-zinc-400 text-xs whitespace-nowrap">{door.location}</td>
                       {STAGE_COLS.map((col) => (
                         <td key={col} className="px-4 py-3">
@@ -173,7 +179,7 @@ export default function OfficeDashboard() {
                         {(door.stages.assembly.photo || door.attach_count > 0) ? (
                           <button
                             data-testid={`uploads-${door.door_id}`}
-                            onClick={() => setPhotoDoor(door)}
+                            onClick={(e) => { e.stopPropagation(); setPhotoDoor(door); }}
                             className="font-mono text-[10px] tracking-[0.15em] text-blue-400 border border-blue-500/40 px-2 py-1 hover:bg-blue-500/10 transition-colors"
                           >
                             CLICK HERE{door.attach_count ? ` (${door.attach_count})` : ""}
@@ -183,10 +189,17 @@ export default function OfficeDashboard() {
                         )}
                       </td>
                       <td className="px-4 py-3">
+                        <button data-testid={`sticker-${door.door_id}`}
+                          onClick={(e) => { e.stopPropagation(); setSticker(door); }}
+                          className="h-9 px-3 border border-white/15 text-zinc-400 hover:text-ember hover:border-ember font-mono text-[10px] tracking-[0.1em] transition-colors flex items-center gap-1">
+                          <BarcodeIcon size={14} weight="bold" />
+                        </button>
+                      </td>
+                      <td className="px-4 py-3">
                         {canDespatch && (
                           <button
                             data-testid={`despatch-${door.door_id}`}
-                            onClick={() => despatchMut.mutate(door.door_id)}
+                            onClick={(e) => { e.stopPropagation(); despatchMut.mutate(door.door_id); }}
                             className="h-9 px-4 bg-emerald-500/20 border border-emerald-500/50 text-emerald-300 font-mono text-[10px] tracking-[0.15em] hover:bg-emerald-500/30 transition-colors whitespace-nowrap"
                           >
                             <CheckCircle size={14} weight="bold" className="inline mr-1 -mt-0.5" /> DESPATCH
@@ -197,7 +210,7 @@ export default function OfficeDashboard() {
                   );
                 })}
                 {doors.length === 0 && (
-                  <tr><td colSpan={10} className="px-4 py-16 text-center font-mono text-xs text-zinc-600 tracking-[0.2em]">NO DOORS MATCH THIS FILTER</td></tr>
+                  <tr><td colSpan={11} className="px-4 py-16 text-center font-mono text-xs text-zinc-600 tracking-[0.2em]">NO DOORS MATCH THIS FILTER</td></tr>
                 )}
               </tbody>
             </table>
@@ -206,6 +219,7 @@ export default function OfficeDashboard() {
       </main>
 
       {photoDoor && <DoorFiles door={photoDoor} onClose={() => setPhotoDoor(null)} />}
-    </div>
+      {sticker && <LabelModal door={sticker} onClose={() => setSticker(null)} />}
+    </AppShell>
   );
 }

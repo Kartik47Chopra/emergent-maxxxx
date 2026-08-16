@@ -23,6 +23,7 @@ export function TopNav() {
         </Link>
         <div className="flex items-center gap-3">
           <Link to="/files" data-testid="nav-files" className="font-mono text-xs tracking-[0.2em] text-zinc-400 hover:text-ember transition-colors px-3 py-2">FILES</Link>
+          <Link to="/settings" data-testid="nav-settings" className="font-mono text-xs tracking-[0.2em] text-zinc-400 hover:text-ember transition-colors px-3 py-2">SETTINGS</Link>
           {user.role === "office" ? (
             <>
               <Link to="/office" data-testid="nav-tracking" className="font-mono text-xs tracking-[0.2em] text-zinc-400 hover:text-ember transition-colors px-3 py-2">TRACKING</Link>

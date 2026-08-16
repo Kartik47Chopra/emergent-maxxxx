@@ -1,0 +1,54 @@
+{
+  "summary": "Full backend + frontend review of MAXX DOORS production tracker. Created pytest suite (/app/backend/tests/backend_test.py + conftest.py) covering 56 tests across health/analytics, doors read+spec, full door lifecycle (core->skin->assembly+photo->press->QC->despatch with all negative cases), jobs, team CRUD, search/notifications/settings/activity/reports/stations, files upload/download/relink/delete, xlsx import + dedupe + cleanup, auth security (bcrypt, httpOnly cookies, refresh/logout, CORS, change-password) and Emergent LLM chat SSE smoke. Result: 55 passed / 1 failed (brute-force lockout, intermittent - see RCA). Frontend: Playwright coverage of office login, 9-item sidebar, dashboard (80 doors + 8 level chips), global search dropdown->door detail, notifications bell, Doors page (floor/status chips, search, sticker modal without navigation, row->detail), Door Detail (barcode, all 6 spec sections, timeline, PRINT STICKER label modal, DRAWINGS modal showing the level PDF, add note), Jobs (8 cards, pause+release, view doors), Reports, Activity (+filters), Team (6 users), Settings, Import (dropzone, Drive card, 3-step explainer, past imports, bad Drive URL toast), Files (11 PDFs), operator flow (core@ -> TopNav station queue, blocked from /office/*), mobile 390px drawer nav. All frontend checks passed. Real data left intact and clean: 8 jobs / 80 doors / 6 users / 11 PDFs, all stages back to awaiting.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/auth/login", "issue": "Brute-force lockout is ineffective through the public URL: the counter key is f\"{request.client.host}:{email}\" and behind the ingress client.host rotates between pod/proxy IPs (observed 10.231.129.132 and .134), so the 5-attempt counter is split and 429 never triggers (7 consecutive wrong passwords all returned 401). Works only on localhost. Fix: derive the client IP from the left-most X-Forwarded-For entry (or key by email alone / add a global per-email counter).", "priority": "HIGH"},
+      {"endpoint": "POST /api/doors/{id}/rework, POST /api/doors/{id}/notes, POST /api/doors/{id}/despatch, POST /api/despatch/batch, POST /api/doors/{id}/stations/{station}/undo", "issue": "Authorization gap: these are described as office-only but depend on get_current_user, not require_office. Verified an operator (core@) successfully executed POST /doors/R2301.D10/rework (200, reset stages of other stations) and POST notes (200); despatch was rejected only by the QC pre-check (400), so an operator can despatch any QC-passed door. Add require_office (or an explicit allow-list) to these routes.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/doors/{id}/stations/{station}/complete, POST /api/doors/{id}/routing/qc, POST /api/doors/{id}/despatch", "issue": "Door lookup is exact/case-sensitive ({\"door_id\": door_id}) while GET /api/doors/{id} and .../undo use a case-insensitive regex. Verified: complete with 'r2301.d10' -> 404, 'R2301.D10' -> 200. Barcode/keyboard scans in another case will 404 on write paths only."},
+      {"endpoint": "POST /api/doors/{id}/photo", "issue": "No way to clear or replace-with-empty an assembly photo, and undo/rework deliberately preserves it, so once a photo exists the 'photo required before assembly' gate can never be re-armed. Same for notes: no DELETE /api/doors/{id}/notes/{note_id}, so wrong notes are permanent."},
+      {"endpoint": "GET /api/import/runs", "issue": "No DELETE for import runs, so the Import page 'past imports' history permanently accumulates every (including failed/test) run."},
+      {"endpoint": "GET /api/analytics/throughput, /api/analytics/leaderboard", "issue": "Return [] (not an empty-shaped object) when no stage_completed activity exists yet; UI must handle the empty case (it does, but worth documenting)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AppShell", "issue": "sidenav-* data-testids are duplicated: the desktop sidebar and the mobile drawer both mount NavItems, so while the drawer is open there are 2 nodes per testid and the hidden desktop one is resolved first (Playwright click timed out until scoped to [data-testid=\"office-drawer\"]). Suffix the drawer copies (e.g. sidenav-doors-mobile) or render only one tree.", "selector": "[data-testid=\"sidenav-doors\"]", "priority": "MEDIUM"},
+      {"component": "Doors table / OfficeDashboard", "issue": "Fresh (untouched) doors render CORE and SKIN as amber 'IN PROGRESS' while Reports for the same doors says '0 done - 80 waiting'. Misleading status wording; 'READY'/'AWAITING' would match the data.", "selector": "[data-testid=\"doors-table\"]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Door Detail right column", "issues": ["Timeline / Notes / History hint text uses very dim zinc-600 on near-black (contrast well below 4.5:1) - hard to read on factory monitors"]},
+      {"screen": "Login page", "issues": ["Helper text 'OFFICE: office@maxxdoors.com / STATIONS: ...' and input placeholders are extremely low contrast against the dark card"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/conftest.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Fix brute-force lockout key to use X-Forwarded-For (left-most) instead of request.client.host - lockout currently never fires via the public URL",
+    "Add require_office to /doors/{id}/rework, /doors/{id}/notes, /doors/{id}/despatch, /despatch/batch, /doors/{id}/stations/{station}/undo (operator currently allowed)",
+    "Make door lookups case-insensitive in complete/qc/despatch (reuse the find_door helper) so scanner input in any case works",
+    "Add ability to clear/replace an assembly photo and delete a note; optionally add DELETE /api/import/runs/{id}",
+    "De-duplicate sidenav-* data-testids between desktop sidebar and mobile drawer",
+    "Reword CORE/SKIN chips for untouched doors (IN PROGRESS -> READY) and raise contrast of zinc-600 hint text"
+  ],
+  "critical_code_review_comments": [
+    "core.py login lockout: identifier must be built from the forwarded client IP; behind k8s ingress request.client.host is the proxy pod IP and rotates, silently disabling the control.",
+    "stations_routes.complete_one / routing_qc / despatch_one query db.doors with an exact door_id while doors_routes.find_door uses a case-insensitive regex - unify on one helper to avoid divergent 404s.",
+    "Write endpoints in doors_routes/despatch_routes mix require_office and get_current_user inconsistently; rework/undo can wipe completed stages of other stations when called by an operator.",
+    "No unique index or validation prevents two files rows pointing at the same storage_path; delete is soft-only (is_deleted) so storage objects are never reclaimed.",
+    "All routers are well under 700 lines, responses exclude _id, env vars are read without defaults for MONGO_URL/DB_NAME/JWT_SECRET - good."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py", "/app/backend/tests/conftest.py"],
+  "success_rate": {"backend": "98% (55/56 pytest cases)", "frontend": "100% of executed UI checks"},
+  "seed_data_creation": "Transient only, all removed: user test_qa1@maxxdoors.com, job from TEST_import.xlsx with doors TEST01.D1/D2, file TEST_qa.txt on R1701.D3, TEST_ notes, rework/undo cycle on R2301.D3 and R2301.D10. Verified afterwards: 8 jobs / 80 doors / 6 users / 11 live files / all stages 'awaiting' / settings restored / 1 import run (the original setup run) remaining.",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "/app/memory/test_credentials.md is present and correct (office@maxxdoors.com / MaxxOffice!2026; station operators / MaxxStation!2026)",
+  "context_for_next_testing_agent": "Run: cd /app/backend && python -m pytest tests/ -q (pytest.ini already sets -n 2 --dist loadscope). TestDoorLifecycle drives door R2301.D3 through every stage and resets it (undo core+skin) at the end; test_05 (assembly-without-photo) self-skips if a photo is still attached because no API can clear it - clear stages.assembly.photo in Mongo to re-arm. TestAuthSecurity::test_bad_login_401_then_lockout is a real defect and fails ~50% of runs (proxy IP rotation) - do not 'fix' the test. CORS is asserted against localhost:8001 on purpose: the edge proxy rewrites Access-Control-* to '*' on the public URL (frontend is same-origin so this is not a functional bug). Frontend: all office pages, door detail modals, jobs pause/release, operator station queue and mobile drawer already verified passing; only re-verify after the auth/role fixes.",
+  "rca_of_the_issue": "Lockout: db.login_attempts documents are keyed on f\"{request.client.host}:{email}\". Through https://website-pro-35.preview.emergentagent.com the observed keys were '10.231.129.132:<email>' and '10.231.129.134:<email>' for the same client, splitting the counter (counts 2-4 each) so the >=5 check never trips; identical requests to http://localhost:8001 produced 401,401,401,401,401,429,429 confirming the logic itself is correct. Role gaps: rework/notes/undo/despatch declare Depends(get_current_user) instead of require_office, reproduced by logging in as core@maxxdoors.com and calling POST /api/doors/R2301.D10/rework (200)."
+}

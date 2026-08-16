@@ -146,7 +146,7 @@ export default function Login() {
               </button>
             </form>
             <div className="border-t border-white/10 px-8 py-4">
-              <p className="font-mono text-[10px] tracking-[0.2em] text-zinc-600 leading-relaxed">
+              <p className="font-mono text-[10px] tracking-[0.2em] text-zinc-400 leading-relaxed">
                 OFFICE: office@maxxdoors.com &nbsp;/&nbsp; STATIONS: core@ · skin@ · assembly@ · press@ · routing@maxxdoors.com
               </p>
             </div>

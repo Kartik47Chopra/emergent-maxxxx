@@ -23,6 +23,13 @@ export function DoorFiles({ door, onClose }) {
     queryFn: () => api.get("/files", { params: { door_id: door.door_id } }).then((r) => r.data),
   });
 
+  const { data: floorFiles = [] } = useQuery({
+    queryKey: ["files", "floor", door.floor],
+    queryFn: () => api.get("/files", { params: { floor: door.floor } }).then((r) => r.data),
+    enabled: !!door.floor,
+  });
+  const levelOnly = floorFiles.filter((f) => !f.door_id);
+
   const uploadMut = useMutation({
     mutationFn: (file) => {
       const fd = new FormData();
@@ -86,6 +93,26 @@ export function DoorFiles({ door, onClose }) {
               ))}
             </div>
           </div>
+          {levelOnly.length > 0 && (
+            <div>
+              <p className="font-mono text-[10px] tracking-[0.25em] text-zinc-500 mb-2">DRAWINGS FOR {door.floor?.toUpperCase()} ({levelOnly.length})</p>
+              <div className="space-y-2">
+                {levelOnly.map((f) => (
+                  <div key={f.id} data-testid={`level-file-${f.id}`} className="flex items-center gap-3 border border-blue-500/20 bg-blue-500/5 px-4 py-3">
+                    {f.content_type === "application/pdf" ? <FilePdf size={22} className="text-red-400 shrink-0" /> : <FileIcon size={22} className="text-zinc-400 shrink-0" />}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate">{f.original_filename}</p>
+                      <p className="font-mono text-[10px] text-zinc-500">WHOLE LEVEL · {(f.size / 1024).toFixed(0)} KB</p>
+                    </div>
+                    <button data-testid={`level-file-open-${f.id}`} onClick={() => openFile(f)}
+                      className="h-10 w-10 border border-white/15 flex items-center justify-center text-zinc-300 hover:text-ember hover:border-ember transition-colors shrink-0">
+                      <DownloadSimple size={18} weight="bold" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
         <div className="border-t border-white/10 p-4 shrink-0"
           onDragOver={(e) => e.preventDefault()}

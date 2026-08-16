@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { FilePdf, FileXls, FileImage, File as FileIcon, DownloadSimple, Trash, CloudArrowUp, CheckCircle, FolderOpen, Smiley } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { api, apiError } from "@/lib/api";
-import { TopNav } from "@/components/TopNav";
+import { AppShell } from "@/components/AppShell";
 import { openFile } from "@/components/DoorFiles";
 
 function kindOf(f) {
@@ -77,8 +77,7 @@ export default function Files() {
   });
 
   return (
-    <div className="min-h-screen bg-obsidian text-white" data-testid="files-page">
-      <TopNav />
+    <AppShell testId="files-page">
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-8">
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
           <p className="font-mono text-[10px] tracking-[0.3em] text-ember">SHARED DOCUMENT VAULT</p>
@@ -196,6 +195,6 @@ export default function Files() {
           </div>
         </div>
       </main>
-    </div>
+    </AppShell>
   );
 }

@@ -10,7 +10,7 @@ const STYLES = {
 const LABELS = {
   completed: "COMPLETED",
   delivered: "DELIVERED",
-  in_progress: "IN PROGRESS",
+  in_progress: "READY",
   awaiting: "AWAITING",
   failed: "FAILED QC",
   locked: "—",

@@ -4,7 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Plus, Trash, FloppyDisk } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { api, apiError } from "@/lib/api";
-import { TopNav } from "@/components/TopNav";
+import { AppShell } from "@/components/AppShell";
 
 const EMPTY_DOOR = {
   floor: "", location: "", door_type: "DSC-03d", qty: 1, internal_door: "Yes",
@@ -55,8 +55,7 @@ export default function JobCreate() {
   const valid = name.trim() && doors.every((d) => d.floor.trim() && d.location.trim() && d.door_id.trim());
 
   return (
-    <div className="min-h-screen bg-obsidian text-white" data-testid="job-create-page">
-      <TopNav />
+    <AppShell testId="job-create-page">
       <main className="max-w-[1200px] mx-auto px-4 sm:px-6 py-8 space-y-8">
         <div>
           <p className="font-mono text-[10px] tracking-[0.3em] text-ember">PART NUMBER CREATION</p>
@@ -127,6 +126,6 @@ export default function JobCreate() {
           </button>
         </div>
       </main>
-    </div>
+    </AppShell>
   );
 }

@@ -9,6 +9,13 @@ import JobCreate from "@/pages/JobCreate";
 import Station from "@/pages/Station";
 import Files from "@/pages/Files";
 import Import from "@/pages/Import";
+import Doors from "@/pages/Doors";
+import DoorDetail from "@/pages/DoorDetail";
+import Jobs from "@/pages/Jobs";
+import Reports from "@/pages/Reports";
+import Team from "@/pages/Team";
+import Activity from "@/pages/Activity";
+import Settings from "@/pages/Settings";
 import ChatWidget from "@/components/ChatWidget";
 
 function SmoothScroll() {
@@ -48,6 +55,18 @@ function HomeRedirect() {
   return <Navigate to={user.role === "office" ? "/office" : "/station"} replace />;
 }
 
+const OFFICE_ROUTES = [
+  ["/office", OfficeDashboard],
+  ["/office/doors", Doors],
+  ["/office/doors/:doorId", DoorDetail],
+  ["/office/jobs", Jobs],
+  ["/office/jobs/new", JobCreate],
+  ["/office/import", Import],
+  ["/office/reports", Reports],
+  ["/office/team", Team],
+  ["/office/activity", Activity],
+];
+
 function Shell() {
   const { user } = useAuth();
   return (
@@ -55,10 +74,11 @@ function Shell() {
       <Routes>
         <Route path="/" element={<HomeRedirect />} />
         <Route path="/login" element={<Login />} />
-        <Route path="/office" element={<RequireAuth role="office"><OfficeDashboard /></RequireAuth>} />
-        <Route path="/office/jobs/new" element={<RequireAuth role="office"><JobCreate /></RequireAuth>} />
-        <Route path="/office/import" element={<RequireAuth role="office"><Import /></RequireAuth>} />
+        {OFFICE_ROUTES.map(([path, Page]) => (
+          <Route key={path} path={path} element={<RequireAuth role="office"><Page /></RequireAuth>} />
+        ))}
         <Route path="/files" element={<RequireAuth><Files /></RequireAuth>} />
+        <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
         <Route path="/station" element={<RequireAuth role="operator"><Station /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
