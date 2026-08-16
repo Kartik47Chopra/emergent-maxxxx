@@ -1,0 +1,99 @@
+{
+  "theme": "dark",
+  "typography": {
+    "headings": {
+      "font_family": "Chivo",
+      "weights": ["800", "900"],
+      "instructions": "Use Chivo for all headings. MUST use tight letter spacing (tracking-tight or tracking-tighter). Avoid generic fonts like Inter for headings."
+    },
+    "body": {
+      "font_family": "IBM Plex Sans",
+      "weights": ["400", "500", "600"],
+      "instructions": "Use for dense data, standard paragraphs, and UI labels. Clean, mechanical, and highly readable."
+    },
+    "data_and_metrics": {
+      "font_family": "IBM Plex Mono",
+      "weights": ["500", "700"],
+      "instructions": "Use for all door IDs, dimensions, part numbers, QC readouts, and metrics. Gives a precision control-room feel."
+    }
+  },
+  "colors": {
+    "background": {
+      "primary": "#050505",
+      "secondary": "#0A0A0A",
+      "instructions": "Deep Obsidian. Do not use pure gray. The environment must feel like a dark factory floor or precision control room."
+    },
+    "surface": {
+      "card": "#121212",
+      "card_hover": "#1A1A1A",
+      "border": "rgba(255, 255, 255, 0.1)",
+      "instructions": "Use stark, solid surfaces. For office dashboards, rely on Grid Borders (Technical look). Tablets must use ultra-dark high-contrast surfaces."
+    },
+    "primary": {
+      "color": "#F59E0B",
+      "hover": "#D97706",
+      "text_on_primary": "#000000",
+      "instructions": "Safety Amber / Hazard Orange. Use for main CTAs, active states, and critical actions. Do not overuse; let it pop against the dark steel UI."
+    },
+    "status": {
+      "success": "#10B981",
+      "error": "#EF4444",
+      "warning": "#F59E0B",
+      "info": "#3B82F6",
+      "instructions": "Critical for QC Pass/Fail and routing stages."
+    },
+    "text": {
+      "primary": "#FFFFFF",
+      "secondary": "#A1A1AA",
+      "muted": "#71717A"
+    }
+  },
+  "visual_enhancers": {
+    "borders_and_shadows": "Use 1px solid borders (border-white/10). No soft shadows. Use sharp, industrial, hard-edged containers. Replace shadows with 2px 'Inner Glow' highlights for active items.",
+    "textures": "Blueprint grid textures or subtle grain noise in the background for the login/marketing pages.",
+    "hover_states": "Interactive elements must translate on hover (e.g., -translate-y-1). Focus states must have a 2px solid border in Safety Amber.",
+    "tablet_specific": "For the 5 factory stations, eliminate delicate visual flair. Buttons MUST be large (min h-16 or h-20), padding must be generous. Checkboxes and list items must be massive for gloved hands."
+  },
+  "layouts": {
+    "login_page": "Cinematic split screen. Left side: immersive dark image of industrial sparks (from image_urls). Right side: strict, brutalist login form with hard borders. Add a Framer Motion reveal for the form.",
+    "office_dashboard": "Precision control room. High Density Grid (Bento Grid Mode B). grid-cols-1 md:grid-cols-4 lg:grid-cols-12. Tight gaps (gap-4 or gap-6). Ensure all table cells and data rows align perfectly.",
+    "factory_tablets": "Mobile-first, tablet-optimized. Grid-cols-1 or 2 maximum. High contrast mode. Enormous interactive targets. Simple left-to-right reading flow. Focus on single-task completion (Tick-off lists, QC pass/fail)."
+  },
+  "motion": {
+    "page_transitions": "Use Framer Motion for kinetic reveals. Masked line reveals for the login page.",
+    "micro_interactions": "Instant, snappy feedback on tablets (no long animations that slow down factory workers). Subdued but precise transitions on the office dashboard.",
+    "scrolling": "Use Lenis for smooth scrolling on the desktop/office side."
+  },
+  "components": {
+    "instructions_to_main_agent": "1. Build custom HTML/Tailwind for the Login Page. 2. Use Shadcn components for Office Dashboard (Tables, Dialogs, Select). Customize them to remove the 'Vercel-look' (sharp corners, dark backgrounds, amber focus rings). 3. For factory tablets, build massive custom button and checkbox structures optimized for touch. 4. Never use native <input type='date'>, use Shadcn.",
+    "required_shadcn": ["button", "input", "table", "dialog", "select", "checkbox", "badge", "card", "tabs"]
+  },
+  "image_urls": [
+    {
+      "url": "https://images.unsplash.com/photo-1564182998523-6923112e7d6b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODR8MHwxfHNlYXJjaHwyfHxpbmR1c3RyaWFsJTIwd2VsZGluZyUyMHNwYXJrcyUyMGRhcmt8ZW58MHx8fHwxNzg2ODg5NjU3fDA&ixlib=rb-4.1.0&q=85",
+      "category": "hero_login_background",
+      "description": "Person using angle grinder with dramatic sparks in dark industrial setting."
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1720036237390-7cec3edda585?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTN8MHwxfHNlYXJjaHwxfHxpbmR1c3RyaWFsJTIwbWFudWZhY3R1cmluZyUyMG1hY2hpbmVyeSUyMGRhcmt8ZW58MHx8fHwxNzg2ODg5NjUyfDA&ixlib=rb-4.1.0&q=85",
+      "category": "dashboard_header_texture",
+      "description": "Dark factory environment, suitable for low-opacity background texture behind data."
+    }
+  ],
+  "accessibility": {
+    "contrast": "Ensure all text against the #050505 background meets 4.5:1 contrast. Use pure #FFFFFF for primary text.",
+    "touch_targets": "CRITICAL: Tablet screens must have a minimum touch target size of 48x48px, ideally 64x64px for factory operators.",
+    "data_testid": "All interactive elements (buttons, inputs, rows) MUST have data-testid attributes (e.g., 'login-submit-btn', 'qc-pass-btn')."
+  },
+  "universal_guidelines_for_main_agent": [
+    "You MUST use dark theme. This is a heavy industry app.",
+    "Do not use generic SaaS blue. The primary color is Safety Amber (#F59E0B).",
+    "DO NOT apply universal transitions (e.g., transition: all). Target specific properties.",
+    "Do not center-align the app container. Text should flow naturally left-to-right.",
+    "Use Phosphor Icons (yarn add @phosphor-icons/react) for sharp, technical icons.",
+    "Use sonner for toast notifications.",
+    "NEVER use placeholder images. Only use the provided Unsplash URLs.",
+    "Create the 5 distinct factory tablet interfaces (Core, Skin, Assembly, Press, Routing) and Despatch with extreme clarity and massive touch areas.",
+    "Create the Office dashboard with detailed tracking tables and job creation forms."
+  ]
+}
