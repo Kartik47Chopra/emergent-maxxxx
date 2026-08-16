@@ -22,9 +22,11 @@ export function TopNav() {
           <span className="font-display font-black text-lg tracking-tighter hidden sm:block">MAXX DOORS</span>
         </Link>
         <div className="flex items-center gap-3">
+          <Link to="/files" data-testid="nav-files" className="font-mono text-xs tracking-[0.2em] text-zinc-400 hover:text-ember transition-colors px-3 py-2">FILES</Link>
           {user.role === "office" ? (
             <>
               <Link to="/office" data-testid="nav-tracking" className="font-mono text-xs tracking-[0.2em] text-zinc-400 hover:text-ember transition-colors px-3 py-2">TRACKING</Link>
+              <Link to="/office/import" data-testid="nav-import" className="font-mono text-xs tracking-[0.2em] text-zinc-400 hover:text-ember transition-colors px-3 py-2">IMPORT</Link>
               <Link to="/office/jobs/new" data-testid="nav-new-job" className="font-mono text-xs tracking-[0.2em] text-black bg-ember hover:bg-amber-600 transition-colors px-4 py-2 font-bold">+ NEW JOB</Link>
             </>
           ) : (

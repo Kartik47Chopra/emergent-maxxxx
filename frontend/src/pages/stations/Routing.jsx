@@ -80,6 +80,10 @@ export default function Routing() {
           <div className="border-2 border-ember/40 bg-carbon p-6 space-y-6" data-testid="routing-qc-panel">
             <div className="flex flex-wrap items-baseline justify-between gap-3">
               <span className="font-mono font-bold text-4xl text-ember">{door.door_id}</span>
+              <a href={`/files?focus=${encodeURIComponent(door.door_id)}`} data-testid="routing-drawings-btn"
+                className="font-mono text-xs tracking-[0.2em] text-ember border border-ember/40 px-4 py-2 hover:bg-ember/10 transition-colors">
+                DRAWINGS
+              </a>
               <button data-testid="routing-back-btn" onClick={() => { setDoor(null); setFailing(false); setNotes(""); }}
                 className="font-mono text-xs tracking-[0.2em] text-zinc-400 hover:text-white border border-white/15 px-4 py-2 transition-colors">
                 ← BACK TO QUEUE

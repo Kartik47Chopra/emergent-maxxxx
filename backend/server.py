@@ -6,14 +6,50 @@ import uuid
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
-from typing import Optional, List
+import asyncio
+import io
+import json
+from typing import Optional, List, Dict
 
 import bcrypt
 import jwt
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends
+import requests
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, UploadFile, File, Form
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
+from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
+
+STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
+STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
+APP_NAME = "maxx-doors"
+storage_key = None
+
+
+def init_storage(force: bool = False):
+    global storage_key
+    if storage_key and not force:
+        return storage_key
+    resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": os.environ.get("EMERGENT_LLM_KEY")}, timeout=30)
+    resp.raise_for_status()
+    storage_key = resp.json()["storage_key"]
+    return storage_key
+
+
+def put_object(path: str, data: bytes, content_type: str) -> dict:
+    resp = requests.put(f"{STORAGE_URL}/objects/{path}",
+                        headers={"X-Storage-Key": init_storage(), "Content-Type": content_type},
+                        data=data, timeout=120)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def get_object(path: str):
+    resp = requests.get(f"{STORAGE_URL}/objects/{path}",
+                        headers={"X-Storage-Key": init_storage()}, timeout=60)
+    resp.raise_for_status()
+    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
 
 mongo_url = os.environ["MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
@@ -139,6 +175,7 @@ def make_door(job_id, job_name, floor, door_id, location, door_type="DSC-03d", *
         "core_cutting": kw.get("core_cutting", "2400 x 826"),
         "skin_qty": kw.get("skin_qty", 2), "skin_type": kw.get("skin_type", "Sapele Veneer 6mm"),
         "skin_cutting": kw.get("skin_cutting", "2440 x 840"),
+        "extras": kw.get("extras", {}),
         "stages": fresh_stages(core_qty), "created_at": now_iso(),
     }
 
@@ -340,7 +377,15 @@ async def list_doors(floor: Optional[str] = None, q: Optional[str] = None,
         query["job_id"] = job_id
     if q:
         query["door_id"] = {"$regex": q.strip(), "$options": "i"}
-    return await db.doors.find(query, {"_id": 0}).sort([("floor", 1), ("door_id", 1)]).to_list(2000)
+    doors = await db.doors.find(query, {"_id": 0}).sort([("floor", 1), ("door_id", 1)]).to_list(2000)
+    counts = await db.files.aggregate([
+        {"$match": {"is_deleted": False, "door_id": {"$ne": ""}}},
+        {"$group": {"_id": {"$toLower": "$door_id"}, "n": {"$sum": 1}}},
+    ]).to_list(1000)
+    cmap = {c["_id"]: c["n"] for c in counts}
+    for d in doors:
+        d["attach_count"] = cmap.get(d["door_id"].lower(), 0)
+    return doors
 
 
 # ---------- Stations ----------
@@ -498,6 +543,236 @@ async def stats(user=Depends(get_current_user)):
 @api_router.get("/")
 async def root():
     return {"message": "MAXX DOORS production API"}
+
+
+# ---------- Files (drawings & data sheets) ----------
+
+@api_router.post("/files")
+async def upload_file(file: UploadFile = File(...), door_id: str = Form(""), job_id: str = Form(""),
+                      floor: str = Form(""), user=Depends(get_current_user)):
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "Empty file")
+    if len(data) > 25_000_000:
+        raise HTTPException(400, "File too large (25MB max)")
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "bin"
+    path = f"{APP_NAME}/drawings/{uuid.uuid4()}.{ext}"
+    result = await asyncio.to_thread(put_object, path, data, file.content_type or "application/octet-stream")
+    doc = {"id": str(uuid.uuid4()), "storage_path": result["path"], "original_filename": file.filename,
+           "content_type": file.content_type or "application/octet-stream", "size": result["size"],
+           "door_id": door_id.strip(), "job_id": job_id.strip(), "floor": floor.strip(),
+           "uploaded_by": user["name"], "created_at": now_iso(), "is_deleted": False}
+    await db.files.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.get("/files")
+async def list_files(door_id: Optional[str] = None, job_id: Optional[str] = None,
+                     floor: Optional[str] = None, user=Depends(get_current_user)):
+    q = {"is_deleted": False}
+    if door_id:
+        q["door_id"] = {"$regex": "^" + door_id.strip() + "$", "$options": "i"}
+    if job_id:
+        q["job_id"] = job_id
+    if floor:
+        q["floor"] = {"$regex": floor.strip(), "$options": "i"}
+    return await db.files.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
+
+
+@api_router.get("/files/{file_id}/download")
+async def download_file(file_id: str, user=Depends(get_current_user)):
+    rec = await db.files.find_one({"id": file_id, "is_deleted": False})
+    if not rec:
+        raise HTTPException(404, "File not found")
+    data, ct = await asyncio.to_thread(get_object, rec["storage_path"])
+    return Response(content=data, media_type=rec.get("content_type") or ct,
+                    headers={"Content-Disposition": f'inline; filename="{rec["original_filename"]}"'})
+
+
+@api_router.delete("/files/{file_id}")
+async def delete_file(file_id: str, user=Depends(get_current_user)):
+    res = await db.files.update_one({"id": file_id}, {"$set": {"is_deleted": True}})
+    if not res.matched_count:
+        raise HTTPException(404, "File not found")
+    return {"ok": True}
+
+
+# ---------- Excel import ----------
+
+HEADER_MAP = {
+    "door id": "door_id", "door#": "door_id",
+    "location": "location", "building": "floor",
+    "leaf height": "leaf_height", "door height": "leaf_height",
+    "leaf width 1": "leaf_width_1", "door leaf 1": "leaf_width_1",
+    "leaf width 2": "leaf_width_2", "door leaf 2": "leaf_width_2",
+    "door thickness": "panel_thickness", "panel thickness": "panel_thickness",
+    "door type": "door_type", "fire rating": "fire_rating",
+    "core qty leaf 1": "core_qty_1", "core leaf 1": "core_cutting_1",
+    "core qty leaf 2": "core_qty_2", "core cutting list leaf 2": "core_cutting_2",
+    "stile quantity": "stile_qty", "stiles": "stiles",
+    "rail size leaf 1": "rail_1", "rail size leaf 2": "rail_2",
+}
+
+
+def norm_cell(c) -> str:
+    return " ".join(str(c).replace("\n", " ").split()).lower() if c is not None else ""
+
+
+def parse_workbook(data: bytes, filename: str):
+    import openpyxl
+    wb = openpyxl.load_workbook(io.BytesIO(data), data_only=True)
+    ws = wb.active
+    title = str(ws["A1"].value or filename.rsplit(".", 1)[0]).strip()
+    rows = list(ws.iter_rows(values_only=True))
+    header_idx, headers = None, []
+    for i, row in enumerate(rows[:10]):
+        norms = [norm_cell(c) for c in row]
+        if any(n in ("door id", "door#") for n in norms):
+            header_idx, headers = i, norms
+            break
+    if header_idx is None:
+        raise HTTPException(400, "Could not find a header row containing 'DOOR ID' or 'Door#'")
+    colmap = {}
+    for j, h in enumerate(headers):
+        field = HEADER_MAP.get(h)
+        if field and field not in colmap.values():
+            colmap[j] = field
+    doors = []
+    for row in rows[header_idx + 1:]:
+        rec = {}
+        for j, field in colmap.items():
+            v = row[j] if j < len(row) else None
+            if v is not None and str(v).strip():
+                rec[field] = str(v).strip()
+        if rec.get("door_id"):
+            doors.append(rec)
+    if not doors:
+        raise HTTPException(400, "No door rows found below the header")
+    job_name = title.split(" - ", 1)[1].strip() if " - " in title else title
+    return {"job_name": job_name, "source_title": title, "count": len(doors), "doors": doors}
+
+
+@api_router.post("/import/preview")
+async def import_preview(file: UploadFile = File(...), user=Depends(require_office)):
+    data = await file.read()
+    return await asyncio.to_thread(parse_workbook, data, file.filename or "import.xlsx")
+
+
+def to_int(v, default=0):
+    try:
+        return int(float(str(v).strip()))
+    except (TypeError, ValueError):
+        return default
+
+
+class ImportConfirm(BaseModel):
+    name: str
+    client: str = ""
+    doors: List[Dict[str, str]]
+
+
+@api_router.post("/import/confirm")
+async def import_confirm(body: ImportConfirm, user=Depends(require_office)):
+    if not body.doors:
+        raise HTTPException(400, "No doors to import")
+    ids = [d["door_id"].strip() for d in body.doors if d.get("door_id")]
+    if len(ids) != len(set(ids)):
+        raise HTTPException(400, "Duplicate Door IDs in this import")
+    existing = await db.doors.find({"door_id": {"$in": ids}}, {"_id": 0, "door_id": 1}).to_list(1000)
+    if existing:
+        raise HTTPException(400, "Door IDs already exist: " + ", ".join(e["door_id"] for e in existing))
+    job = {"id": str(uuid.uuid4()), "name": body.name.strip(), "client": body.client.strip(),
+           "released": False, "created_at": now_iso()}
+    await db.jobs.insert_one(job)
+    for rec in body.doors:
+        if not rec.get("door_id"):
+            continue
+        core_qty = to_int(rec.get("core_qty_1")) + to_int(rec.get("core_qty_2"))
+        core_cutting = " / ".join(x for x in [rec.get("core_cutting_1"), rec.get("core_cutting_2")] if x)
+        door = make_door(
+            job["id"], job["name"], rec.get("floor", "Unassigned"), rec["door_id"].strip(),
+            rec.get("location", ""), rec.get("door_type", ""),
+            leaf_height=rec.get("leaf_height", ""), leaf_width_1=rec.get("leaf_width_1", ""),
+            leaf_width_2=rec.get("leaf_width_2", ""), panel_thickness=rec.get("panel_thickness", ""),
+            fire_rating=rec.get("fire_rating", ""), core_qty=core_qty, core_cutting=core_cutting,
+            extras={k: v for k, v in rec.items() if k in ("stiles", "rail_1", "rail_2", "stile_qty")},
+        )
+        await db.doors.insert_one(door)
+    job["door_count"] = len(ids)
+    job.pop("_id", None)
+    return job
+
+
+# ---------- AI assistant ----------
+
+class ChatIn(BaseModel):
+    message: str
+
+
+async def production_snapshot() -> str:
+    doors = await db.doors.find({}, {"_id": 0, "door_id": 1, "floor": 1, "location": 1,
+                                     "job_name": 1, "stages": 1}).to_list(1000)
+    lines = []
+    for d in doors:
+        st = d["stages"]
+        def m(k):
+            return "Y" if st[k]["status"] == "completed" else "-"
+        qc = st["routing"].get("qc") or ""
+        fail_note = f" QC-FAIL({st['routing'].get('notes','')})" if qc == "fail" else ""
+        lines.append(f"{d['door_id']} [{d['floor']}|{d['location']}] core:{m('core')} skin:{m('skin')} "
+                     f"asm:{m('assembly')} press:{m('press')} routing:{m('routing')}{qc and '/' + qc}"
+                     f" despatch:{m('despatch')}{fail_note}")
+    return "\n".join(lines)
+
+
+@api_router.post("/chat")
+async def chat(body: ChatIn, user=Depends(get_current_user)):
+    msg = body.message.strip()
+    if not msg:
+        raise HTTPException(400, "Empty message")
+    uid = user["id"]
+    await db.chat_messages.insert_one({"user_id": uid, "role": "user", "content": msg, "at": now_iso()})
+    history = await db.chat_messages.find({"user_id": uid}, {"_id": 0}).sort("at", -1).to_list(11)
+    history.reverse()
+    transcript = "\n".join(f"{'User' if h['role'] == 'user' else 'Assistant'}: {h['content']}" for h in history[:-1])
+    snapshot = await production_snapshot()
+    system = (
+        "You are MAXX AI, the production assistant for MAXX DOORS, a fire-rated door factory. "
+        "You have LIVE access to the factory's door data below. Stage flags: Y = completed, - = not done. "
+        "Workflow order: core and skin (parallel) -> assembly -> press -> routing/QC -> despatch. "
+        "Answer concisely, plainly, like a sharp production manager. Use door IDs exactly. "
+        "If asked for next actions, respect the workflow order.\n\nLIVE DOOR DATA:\n" + (snapshot or "(no doors yet)")
+    )
+    prompt = f"Conversation so far:\n{transcript}\n\nUser: {msg}" if transcript else msg
+
+    async def gen():
+        full = ""
+        try:
+            chat_client = LlmChat(api_key=os.environ["EMERGENT_LLM_KEY"],
+                                  session_id=f"{uid}-{uuid.uuid4()}", system_message=system
+                                  ).with_model("openai", "gpt-5.4")
+            async for ev in chat_client.stream_message(UserMessage(text=prompt)):
+                if isinstance(ev, TextDelta):
+                    full += ev.content
+                    yield f"data: {json.dumps({'t': ev.content})}\n\n"
+                elif isinstance(ev, StreamDone):
+                    break
+        except Exception as e:
+            logger.error("chat error: %s", e)
+            full = "Assistant is unavailable right now — please try again shortly."
+            yield f"data: {json.dumps({'t': full})}\n\n"
+        yield "data: [DONE]\n\n"
+        await db.chat_messages.insert_one({"user_id": uid, "role": "assistant", "content": full, "at": now_iso()})
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@api_router.get("/chat/history")
+async def chat_history(user=Depends(get_current_user)):
+    return await db.chat_messages.find({"user_id": user["id"]},
+                                       {"_id": 0, "role": 1, "content": 1, "at": 1}).sort("at", 1).to_list(50)
 
 
 app.include_router(api_router)

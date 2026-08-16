@@ -7,6 +7,9 @@ import Login from "@/pages/Login";
 import OfficeDashboard from "@/pages/OfficeDashboard";
 import JobCreate from "@/pages/JobCreate";
 import Station from "@/pages/Station";
+import Files from "@/pages/Files";
+import Import from "@/pages/Import";
+import ChatWidget from "@/components/ChatWidget";
 
 function SmoothScroll() {
   const { pathname } = useLocation();
@@ -45,6 +48,25 @@ function HomeRedirect() {
   return <Navigate to={user.role === "office" ? "/office" : "/station"} replace />;
 }
 
+function Shell() {
+  const { user } = useAuth();
+  return (
+    <>
+      <Routes>
+        <Route path="/" element={<HomeRedirect />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/office" element={<RequireAuth role="office"><OfficeDashboard /></RequireAuth>} />
+        <Route path="/office/jobs/new" element={<RequireAuth role="office"><JobCreate /></RequireAuth>} />
+        <Route path="/office/import" element={<RequireAuth role="office"><Import /></RequireAuth>} />
+        <Route path="/files" element={<RequireAuth><Files /></RequireAuth>} />
+        <Route path="/station" element={<RequireAuth role="operator"><Station /></RequireAuth>} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+      {user && <ChatWidget />}
+    </>
+  );
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -53,14 +75,7 @@ export default function App() {
         <Toaster theme="dark" position="bottom-right" toastOptions={{
           style: { background: "#121212", border: "1px solid rgba(255,255,255,0.12)", color: "#fff", borderRadius: "2px" },
         }} />
-        <Routes>
-          <Route path="/" element={<HomeRedirect />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/office" element={<RequireAuth role="office"><OfficeDashboard /></RequireAuth>} />
-          <Route path="/office/jobs/new" element={<RequireAuth role="office"><JobCreate /></RequireAuth>} />
-          <Route path="/station" element={<RequireAuth role="operator"><Station /></RequireAuth>} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <Shell />
       </AuthProvider>
     </BrowserRouter>
   );

@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Barcode as BarcodeIcon, Camera, CheckCircle, XCircle } from "@phosphor-icons/react";
+import { Barcode as BarcodeIcon, Camera, CheckCircle, XCircle, FileText } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { api, apiError } from "@/lib/api";
 import { TopNav } from "@/components/TopNav";
@@ -101,6 +101,10 @@ export default function Assembly() {
             <div className="flex flex-wrap items-baseline gap-x-6">
               <span className="font-mono font-bold text-4xl text-ember">{door.door_id}</span>
               <span className="font-mono text-sm text-zinc-400">{door.floor} · {door.location} · {door.door_type}</span>
+              <a href={`/files?focus=${encodeURIComponent(door.door_id)}`} data-testid="assembly-drawings-btn"
+                className="ml-auto font-mono text-xs tracking-[0.2em] text-ember border border-ember/40 px-4 py-2 hover:bg-ember/10 transition-colors flex items-center gap-2">
+                <FileText size={16} /> DRAWINGS
+              </a>
             </div>
             <div className="grid sm:grid-cols-2 gap-4">
               {["core", "skin"].map((part) => {

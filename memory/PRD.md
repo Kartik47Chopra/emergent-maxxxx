@@ -37,13 +37,21 @@
 - Full chain via curl: login (all roles) → core/skin batch complete → wrong-station 403 → assembly photo enforcement → press → QC pass/fail (+notes required) → despatch → despatch note
 - Screenshots: login, office dashboard (live data, despatch buttons), core station (tick + batch), assembly (door load + core/skin verify)
 
+## Implemented (2026-08-16, update 2)
+- Excel bulk import: drop any Assembly sheet / Core Cutting List / Rail Cutting List .xlsx → auto-detects header row (DOOR ID / Door#), parses doors with floors, locations, dims, stiles, rails, core cutting lists → editable preview → one-click draft job creation (office only)
+- Real job imported live: "LORIMER ST - L18 - SOLIDCORE" (10 doors, LEVEL 18, released)
+- Drawing attachments vault (/files): any staff role can upload PDFs/images/sheets from anywhere, link to a Door ID and/or floor, download, delete (soft-delete); object storage via Emergent objstore
+- Door-level attachments: dashboard Uploads column shows count and opens per-door modal (assembly photo + files, upload/delete); Core/Skin rows, Assembly and Routing panels have DRAWINGS links on tablets
+- MAXX AI chatbot (floating widget, all roles): streams replies (gpt-5.4 via Emergent key) with the full live door dataset injected per message; per-user persistent history; suggested prompts
+- Uploaded real shop drawing PDFs into the vault (L18 door drawings attached to R1801.D3; PMDF Level 10 S2)
+
 ## Backlog
 - P0: Real barcode scanning via device camera; real printer integration (currently browser print)
 - P1: Batch definitions assigned by office (door type / dimension grouping), staggered batch release
-- P2: Attachments on part numbers (shop drawings, data sheets), rework loop after QC fail, operator performance metrics, offline tolerance for tablets
+- P2: Skin cutting list import format (once provided), rework loop after QC fail, operator performance metrics, offline tolerance for tablets, drag-and-drop multi-file upload
 
 ## Next tasks
 1. Camera-based barcode scanning at assembly/routing
 2. Office-defined batches with assignment
-3. File attachments per door (PDFs/drawings)
-4. Multi-job floor views + filters per job
+3. Skin list importer + per-leaf skin tracking
+4. Multi-file drag-drop upload in the vault

@@ -7,6 +7,7 @@ import { api, apiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { TopNav } from "@/components/TopNav";
 import { StatusPill, stageStatus } from "@/components/StatusPill";
+import { DoorFiles } from "@/components/DoorFiles";
 
 const STAGE_COLS = ["core", "skin", "assembly", "press", "routing", "despatch"];
 
@@ -169,13 +170,13 @@ export default function OfficeDashboard() {
                         </td>
                       ))}
                       <td className="px-4 py-3">
-                        {door.stages.assembly.photo ? (
+                        {(door.stages.assembly.photo || door.attach_count > 0) ? (
                           <button
                             data-testid={`uploads-${door.door_id}`}
                             onClick={() => setPhotoDoor(door)}
                             className="font-mono text-[10px] tracking-[0.15em] text-blue-400 border border-blue-500/40 px-2 py-1 hover:bg-blue-500/10 transition-colors"
                           >
-                            CLICK HERE
+                            CLICK HERE{door.attach_count ? ` (${door.attach_count})` : ""}
                           </button>
                         ) : (
                           <span className="font-mono text-[10px] text-zinc-700">—</span>
@@ -204,19 +205,7 @@ export default function OfficeDashboard() {
         </div>
       </main>
 
-      {photoDoor && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-6" data-testid="photo-modal">
-          <div className="max-w-2xl w-full border border-white/15 bg-carbon">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
-              <p className="font-mono text-xs tracking-[0.25em] text-ember">ASSEMBLY PHOTO — {photoDoor.door_id}</p>
-              <button data-testid="photo-close-btn" onClick={() => setPhotoDoor(null)} className="text-zinc-400 hover:text-white transition-colors">
-                <X size={22} weight="bold" />
-              </button>
-            </div>
-            <img src={photoDoor.stages.assembly.photo} alt={`Assembly of ${photoDoor.door_id}`} className="w-full max-h-[70vh] object-contain bg-black" />
-          </div>
-        </div>
-      )}
+      {photoDoor && <DoorFiles door={photoDoor} onClose={() => setPhotoDoor(null)} />}
     </div>
   );
 }

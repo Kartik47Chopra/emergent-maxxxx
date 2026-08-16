@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Sticker } from "@phosphor-icons/react";
+import { Check, Sticker, FileText } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { api, apiError } from "@/lib/api";
 import { TopNav } from "@/components/TopNav";
@@ -97,6 +97,15 @@ export default function CoreSkin({ mode }) {
                     <span className="text-zinc-400 hidden sm:block">FIRE <b className="text-white">{door.fire_rating}</b></span>
                   </div>
                 </div>
+                <a
+                  href={`/files?focus=${encodeURIComponent(door.door_id)}`}
+                  data-testid={`drawings-${door.door_id}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="shrink-0 w-12 h-12 border border-white/15 flex items-center justify-center text-zinc-500 hover:text-ember hover:border-ember transition-colors"
+                  title="Drawings & files"
+                >
+                  <FileText size={22} />
+                </a>
               </button>
             );
           })}
