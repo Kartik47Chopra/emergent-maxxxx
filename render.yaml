@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: maxx-doors-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /api/doors
+    envVars:
+      - key: PYTHONPATH
+        value: /app/mock_pkgs
+      - key: DB_NAME
+        value: maxx_doors
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_EMAIL
+        value: office@maxxdoors.com
+      - key: ADMIN_PASSWORD
+        value: MaxxOffice!2026
+      - key: FRONTEND_URL
+        value: https://kartik47chopra.github.io
+      - key: EMERGENT_LLM_KEY
+        value: mock-key
+      - key: MONGO_URL
+        sync: false
