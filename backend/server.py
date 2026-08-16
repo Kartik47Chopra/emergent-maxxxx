@@ -147,7 +147,7 @@ async def seed_users():
                                        "station": st, "created_at": now_iso()})
 
 
-def fresh_stages(core_qty: int = 1):
+def fresh_stages(core_qty: int = 1, skin_qty: int = 2):
     def s():
         return {"status": "awaiting", "by": None, "at": None}
     stages = {k: s() for k in ["core", "skin", "assembly", "press", "routing", "despatch"]}
@@ -156,11 +156,14 @@ def fresh_stages(core_qty: int = 1):
     stages["routing"]["notes"] = ""
     if not core_qty:
         stages["core"].update({"status": "completed", "by": "AUTO (no core required)", "at": now_iso()})
+    if not skin_qty:
+        stages["skin"].update({"status": "completed", "by": "AUTO (no skin required)", "at": now_iso()})
     return stages
 
 
 def make_door(job_id, job_name, floor, door_id, location, door_type="DSC-03d", **kw):
     core_qty = kw.get("core_qty", 1)
+    skin_qty = kw.get("skin_qty", 2)
     return {
         "id": str(uuid.uuid4()), "job_id": job_id, "job_name": job_name,
         "floor": floor, "location": location, "door_type": door_type,
@@ -173,49 +176,15 @@ def make_door(job_id, job_name, floor, door_id, location, door_type="DSC-03d", *
         "fire_rating": kw.get("fire_rating", "FD60"),
         "core_qty": core_qty, "core_type": kw.get("core_type", "FR Particleboard 44mm"),
         "core_cutting": kw.get("core_cutting", "2400 x 826"),
-        "skin_qty": kw.get("skin_qty", 2), "skin_type": kw.get("skin_type", "Sapele Veneer 6mm"),
+        "skin_qty": skin_qty, "skin_type": kw.get("skin_type", "Sapele Veneer 6mm"),
         "skin_cutting": kw.get("skin_cutting", "2440 x 840"),
         "extras": kw.get("extras", {}),
-        "stages": fresh_stages(core_qty), "created_at": now_iso(),
+        "stages": fresh_stages(core_qty, skin_qty), "created_at": now_iso(),
     }
 
 
 def set_stage(door, station, by="Seeder"):
     door["stages"][station].update({"status": "completed", "by": by, "at": now_iso()})
-
-
-async def seed_demo():
-    if await db.jobs.count_documents({}) > 0:
-        return
-    job = {"id": str(uuid.uuid4()), "name": "Riverside Gate - Tower A", "client": "Meridian Construction",
-           "released": True, "created_at": now_iso()}
-    await db.jobs.insert_one(job)
-    locs = ["CORRIDOR ENTRY", "BOH AREA", "FIRE CONTROL ROOM", "STAIR CORE", "RISER CUPBOARD"]
-    doors = []
-    for i in range(2, 10):
-        doors.append(make_door(job["id"], job["name"], "Ground Floor", f"RG01.D{i}", locs[i % len(locs)]))
-    for i in range(1, 5):
-        doors.append(make_door(job["id"], job["name"], "Level 1", f"RG02.D{i}", locs[i % len(locs)],
-                               core_cutting="2100 x 926", skin_cutting="2140 x 940"))
-    for d in doors:
-        n = int(d["door_id"].split(".D")[1])
-        if d["floor"] == "Ground Floor":
-            if n <= 4:
-                for st in ["core", "skin", "assembly", "press", "routing"]:
-                    set_stage(d, st)
-                d["stages"]["routing"]["qc"] = "pass"
-                if n == 2:
-                    set_stage(d, "despatch")
-            elif n == 5:
-                for st in ["core", "skin", "assembly", "press"]:
-                    set_stage(d, st)
-            elif n == 6:
-                for st in ["core", "skin"]:
-                    set_stage(d, st)
-            elif n == 7:
-                set_stage(d, "core")
-        await db.doors.insert_one(d)
-    logger.info("Seeded demo job with %d doors", len(doors))
 
 
 @asynccontextmanager
@@ -225,7 +194,6 @@ async def lifespan(app: FastAPI):
     await db.doors.create_index("job_id")
     await db.doors.create_index("floor")
     await seed_users()
-    await seed_demo()
     yield
     client.close()
 
@@ -607,9 +575,16 @@ HEADER_MAP = {
     "leaf width 1": "leaf_width_1", "door leaf 1": "leaf_width_1",
     "leaf width 2": "leaf_width_2", "door leaf 2": "leaf_width_2",
     "door thickness": "panel_thickness", "panel thickness": "panel_thickness",
-    "door type": "door_type", "fire rating": "fire_rating",
+    "door type": "door_type", "door schedule type": "door_type",
+    "qty": "qty", "internal door": "internal_door",
+    "leaf type single or pair": "leaf_type", "leaf type": "leaf_type",
+    "panel finish": "panel_finish", "handing": "handing",
+    "fire rating": "fire_rating",
     "core qty leaf 1": "core_qty_1", "core leaf 1": "core_cutting_1",
     "core qty leaf 2": "core_qty_2", "core cutting list leaf 2": "core_cutting_2",
+    "skin type": "skin_type", "skin tpye": "skin_type",
+    "skin qty leaf 1": "skin_qty_1", "skin cutting list": "skin_cutting_1",
+    "skin qty leaf 2": "skin_qty_2", "skin cutting list leaf 2": "skin_cutting_2",
     "stile quantity": "stile_qty", "stiles": "stiles",
     "rail size leaf 1": "rail_1", "rail size leaf 2": "rail_2",
 }
@@ -654,9 +629,33 @@ def parse_workbook(data: bytes, filename: str):
 
 
 @api_router.post("/import/preview")
-async def import_preview(file: UploadFile = File(...), user=Depends(require_office)):
-    data = await file.read()
-    return await asyncio.to_thread(parse_workbook, data, file.filename or "import.xlsx")
+async def import_preview(files: List[UploadFile] = File(...), user=Depends(require_office)):
+    merged, order, sources = {}, [], []
+    job_name = None
+    errors = []
+    for f in files:
+        data = await f.read()
+        try:
+            parsed = await asyncio.to_thread(parse_workbook, data, f.filename or "import.xlsx")
+        except HTTPException as e:
+            errors.append(f"{f.filename}: {e.detail}")
+            continue
+        sources.append(f.filename)
+        if not job_name:
+            job_name = parsed["job_name"]
+        for rec in parsed["doors"]:
+            did = rec["door_id"]
+            if did not in merged:
+                merged[did] = dict(rec)
+                order.append(did)
+            else:
+                for k, v in rec.items():
+                    if v and not merged[did].get(k):
+                        merged[did][k] = v
+    if not order:
+        raise HTTPException(400, "No door rows found. " + "; ".join(errors))
+    return {"job_name": job_name or "Imported Job", "sources": sources,
+            "count": len(order), "doors": [merged[d] for d in order], "warnings": errors}
 
 
 def to_int(v, default=0):
@@ -689,14 +688,22 @@ async def import_confirm(body: ImportConfirm, user=Depends(require_office)):
         if not rec.get("door_id"):
             continue
         core_qty = to_int(rec.get("core_qty_1")) + to_int(rec.get("core_qty_2"))
+        skin_qty = to_int(rec.get("skin_qty_1")) + to_int(rec.get("skin_qty_2"))
         core_cutting = " / ".join(x for x in [rec.get("core_cutting_1"), rec.get("core_cutting_2")] if x)
+        skin_cutting = " / ".join(x for x in [rec.get("skin_cutting_1"), rec.get("skin_cutting_2")] if x)
         door = make_door(
             job["id"], job["name"], rec.get("floor", "Unassigned"), rec["door_id"].strip(),
             rec.get("location", ""), rec.get("door_type", ""),
+            qty=to_int(rec.get("qty"), 1), internal_door=rec.get("internal_door", "Yes"),
             leaf_height=rec.get("leaf_height", ""), leaf_width_1=rec.get("leaf_width_1", ""),
             leaf_width_2=rec.get("leaf_width_2", ""), panel_thickness=rec.get("panel_thickness", ""),
+            actual_thickness=rec.get("actual_thickness", ""), leaf_type=rec.get("leaf_type", "Single"),
+            panel_finish=rec.get("panel_finish", ""),
             fire_rating=rec.get("fire_rating", ""), core_qty=core_qty, core_cutting=core_cutting,
-            extras={k: v for k, v in rec.items() if k in ("stiles", "rail_1", "rail_2", "stile_qty")},
+            skin_qty=skin_qty, skin_type=rec.get("skin_type", ""), skin_cutting=skin_cutting,
+            extras={k: v for k, v in rec.items()
+                    if k in ("stiles", "rail_1", "rail_2", "stile_qty", "handing",
+                             "skin_cutting_1", "skin_cutting_2", "core_cutting_1", "core_cutting_2")},
         )
         await db.doors.insert_one(door)
     job["door_count"] = len(ids)

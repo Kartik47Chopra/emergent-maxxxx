@@ -87,14 +87,17 @@ export function DoorFiles({ door, onClose }) {
             </div>
           </div>
         </div>
-        <div className="border-t border-white/10 p-4 shrink-0">
+        <div className="border-t border-white/10 p-4 shrink-0"
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) uploadMut.mutate(f); }}>
           <input ref={fileRef} type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.xlsx,.csv,.txt" className="hidden"
             data-testid="door-file-input"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadMut.mutate(f); e.target.value = ""; }} />
           <button data-testid="door-file-upload-btn" onClick={() => fileRef.current?.click()} disabled={uploadMut.isPending}
-            className="w-full h-14 bg-ember text-black font-display font-extrabold flex items-center justify-center gap-2 hover:bg-amber-600 transition-colors disabled:opacity-50">
-            <UploadSimple size={20} weight="bold" /> {uploadMut.isPending ? "UPLOADING..." : "ATTACH DRAWING / DATA SHEET"}
+            className="w-full h-14 bg-ember text-black font-display font-extrabold flex items-center justify-center gap-2 hover:bg-amber-600 active:translate-y-px transition-colors disabled:opacity-50">
+            <UploadSimple size={20} weight="bold" /> {uploadMut.isPending ? "UPLOADING..." : "ATTACH A DRAWING — OR DROP IT HERE"}
           </button>
+          <p className="font-mono text-[10px] text-zinc-600 text-center mt-2 tracking-[0.1em]">PDFS AND PHOTOS SHOW UP FOR EVERYONE STRAIGHT AWAY</p>
         </div>
       </div>
     </div>

@@ -45,6 +45,13 @@
 - MAXX AI chatbot (floating widget, all roles): streams replies (gpt-5.4 via Emergent key) with the full live door dataset injected per message; per-user persistent history; suggested prompts
 - Uploaded real shop drawing PDFs into the vault (L18 door drawings attached to R1801.D3; PMDF Level 10 S2)
 
+## Implemented (2026-08-16, update 3)
+- Demo job removed; system now holds only real LORIMER ST data (L18: 10 doors, L16: 10 doors, both released)
+- Importer upgraded: multi-sheet drop (Work List + Assembly + Core + Skin + Rail together), auto-merges door rows across sheets by Door ID, captures skin type/qty/cutting lists, schedule type, leaf type, handing, panel finish, fire rating
+- Skin station now gets real cutting data from Skin Cutting Lists; doors with no core/skin requirement auto-complete that stage
+- Files vault redesigned: drag-and-drop multi-file upload with live upload queue, type filter chips (PDFs/Images/Spreadsheets), card grid with kind badges, friendlier copy; per-door modal supports drop-to-attach
+- L16 WORK LIST stored in vault linked to LEVEL 16
+
 ## Backlog
 - P0: Real barcode scanning via device camera; real printer integration (currently browser print)
 - P1: Batch definitions assigned by office (door type / dimension grouping), staggered batch release
